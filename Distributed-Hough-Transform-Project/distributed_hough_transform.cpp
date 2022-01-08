@@ -93,6 +93,8 @@ void polarToCartesian(double rho, int theta, cv::Point& p1, cv::Point& p2) {
 
 
 void computeHoughTransformMasterTask(int argc, char** argv, int numberOfProcesses) {
+	auto start = std::chrono::steady_clock::now();
+
     int theta;      // angle for the line written in polar coordinates
     double rho;     // distance (radius) for the line written in polar coordinates
 
@@ -159,6 +161,9 @@ void computeHoughTransformMasterTask(int argc, char** argv, int numberOfProcesse
         }
     }
 
+	auto end = std::chrono::steady_clock::now();
+	std::chrono::duration<double> elapsed_seconds = end-start;
+	std::cout << "Distributed Hough transform - elapsed time: " << elapsed_seconds.count() << " seconds\n";
 
     cv::Point dummy1(10, 10), dummy2(100, 100);
     cv::line(output, dummy1, dummy2, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
@@ -204,28 +209,6 @@ void computeHoughTransformWorkerTask(int rank, int numberOfProcesses, char* argv
 	printf("Worker sending vote matrix\n");	
 	MPI_Send(votes, 2 * maxDistance * NUM_BINS, MPI_INT, 0, MPI_VOTE_MATRIX, MPI_COMM_WORLD);
 	printf("Worker sent vote matrix\n");	
-
-	/**
-	// receive complete vote matrix from the master
-	MPI_Recv(&votes[0][0], 2 * maxDistance * NUM_BINS, MPI_INT, 0, MPI_VOTE_MATRIX, MPI_COMM_WORLD, NULL);
-	int peaksProcessWorkload = (int)((2 * maxDistance) / numberOfProcesses);
-	int peakIntervalStart = rank - 1, peakIntervalEnd = rank - 1 + peaksProcessWorkload; 
-
-    // find peaks
-    for (int i = peakIntervalStart; i < peakIntervalEnd; ++i) {
-        for (int j = 0; j < NUM_BINS; ++j) {
-            if (votes[i][j] >= lineThreshold) {
-                int rho = i - maxDistance;
-                int theta = j - 90;
-                // converts the line from the polar coordinates to Cartesian coordinates 
-                cv::Point p1, p2; 
-				polarToCartesian(rho, theta, p1, p2);
-                //cv::line(output, p1, p2, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
-				// send p1 and p2 back to the master
-            }
-        }
-    }		
-	**/
 }
 
 

@@ -45,6 +45,8 @@ void polarToCartesian(double rho, int theta, cv::Point& p1, cv::Point& p2) {
 }
 
 int main(int argc, char** argv) {
+	auto start = std::chrono::steady_clock::now();
+
     int i, j;
     int theta;      // angle for the line written in polar coordinates 
 	double rho;     // distance (radius) for the line written in polar coordinates
@@ -65,12 +67,10 @@ int main(int argc, char** argv) {
     cv::namedWindow("output image", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
 
     int maxDistance = hypot(source.rows, source.cols);
-    std::cout << maxDistance <<"\n";
 
     // voting matrix
 	int votes[2 * maxDistance][NUM_BINS]; 
 	std::memset(votes, 0, sizeof votes);
-    std::cout << 2 * maxDistance  << ", " << NUM_BINS << "\n";
 
     // transforms the image such that only the edges are kept
     detectEdge(source, edges);
@@ -95,7 +95,6 @@ int main(int argc, char** argv) {
             if(votes[i][j] >= lineThreshold) {
                 rho = i - maxDistance;
                 theta = j - 90;
-                std::cout << "found line with rho = " << rho << " and theta = " << theta << "\n";
                 // converts the line from the polar coordinates to Cartesian coordinates 
                 cv::Point p1, p2; 
 				polarToCartesian(rho, theta, p1, p2);
@@ -103,6 +102,10 @@ int main(int argc, char** argv) {
             }
         }
     }
+
+	auto end = std::chrono::steady_clock::now();
+	std::chrono::duration<double> elapsed_seconds = end-start;
+	std::cout << "Sequential Hough transform - elapsed time: " << elapsed_seconds.count() << " seconds\n";
 
     cv::Point dummy1(10, 10), dummy2(100, 100);
     cv::line(output, dummy1, dummy2, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
