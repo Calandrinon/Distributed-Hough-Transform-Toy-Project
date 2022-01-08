@@ -4,8 +4,10 @@
 #include <utility>
 #include <queue>
 #include <cstring>
+#include <unistd.h>
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
+#include "mpi.h"
 
 #define BIN_WIDTH 1
 #define NUM_BINS 180 / BIN_WIDTH 
@@ -13,6 +15,51 @@
 #define KERNEL_SIZE 3
 #define THRESHOLD 50
 #define RATIO 3
+
+
+enum MpiHoughTag {
+	MPI_EDGE_MATRIX_INTERVAL_START,
+	MPI_EDGE_MATRIX_INTERVAL_END,
+	MPI_EDGE_MATRIX,
+	MPI_MAX_DISTANCE,
+	MPI_VOTE_MATRIX
+};
+
+
+const int MAXBYTES=8*1024*1024;
+uchar buffer[MAXBYTES];
+
+void sendMatrixThroughMPI(cv::Mat m, int destination){
+	int rows  = m.rows;
+	int cols  = m.cols;
+	int type  = m.type();
+	int channels = m.channels();
+	memcpy(&buffer[0 * sizeof(int)],(uchar*)&rows,sizeof(int));
+	memcpy(&buffer[1 * sizeof(int)],(uchar*)&cols,sizeof(int));
+	memcpy(&buffer[2 * sizeof(int)],(uchar*)&type,sizeof(int));
+
+	int bytesPerSample=1; // change if using shorts or floats
+	int bytes=m.rows*m.cols*channels*bytesPerSample;
+
+	if(!m.isContinuous())
+ 		m = m.clone();
+	memcpy(&buffer[3*sizeof(int)],m.data,bytes);
+	MPI_Send(&buffer, bytes+3*sizeof(int), MPI_UNSIGNED_CHAR, destination, MPI_EDGE_MATRIX, MPI_COMM_WORLD);
+}
+
+cv::Mat receiveMatrixThroughMPI(int source){
+	MPI_Status status;
+	int count,rows,cols,type,channels;
+
+	MPI_Recv(&buffer, sizeof(buffer), MPI_UNSIGNED_CHAR, source, MPI_EDGE_MATRIX, MPI_COMM_WORLD, &status);
+	MPI_Get_count(&status,MPI_UNSIGNED_CHAR,&count);
+	memcpy((uchar*)&rows,&buffer[0 * sizeof(int)], sizeof(int));
+	memcpy((uchar*)&cols,&buffer[1 * sizeof(int)], sizeof(int));
+	memcpy((uchar*)&type,&buffer[2 * sizeof(int)], sizeof(int));
+
+	cv::Mat received = cv::Mat(rows,cols,type,(uchar*)&buffer[3*sizeof(int)]);
+	return received;
+}
 
 
 void detectEdge(const cv::Mat& in, cv::Mat& out) {
@@ -45,70 +92,6 @@ void polarToCartesian(double rho, int theta, cv::Point& p1, cv::Point& p2) {
 }
 
 
-void computeHoughTransform(int argc, char** argv) {
-    int theta;      // angle for the line written in polar coordinates
-    double rho;     // distance (radius) for the line written in polar coordinates
-
-    cv::Mat source, edges, output;
-
-    int lineThreshold = atoi(argv[2]);
-    std::deque<std::pair<int, int>> edgePoints;  // <row, col>
-
-    source = cv::imread(argv[1], cv::IMREAD_GRAYSCALE);
-    cv::namedWindow("source image", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
-
-    output = source.clone();
-    cv::namedWindow("output image", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
-
-    int maxDistance = hypot(source.rows, source.cols);
-    std::cout << maxDistance <<"\n";
-
-    // voting matrix
-    std::vector<std::vector<int>> votes(2 * maxDistance, std::vector<int>(NUM_BINS, 0));
-    std::cout << votes.size() << ", " << votes[0].size() << "\n";
-
-    // transforms the image such that only the edges are kept
-    detectEdge(source, edges);
-    cv::namedWindow("edge detection result", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
-
-    // vote
-    for(int i = 0; i < edges.rows; ++i) {
-        for(int j = 0; j < edges.cols; ++j) {
-            if(edges.at<uchar>(i, j) == 255) {  // if we find an edge point
-                // we go through all angles between -90 degrees and 90 degrees
-                for(theta = 0; theta <= 180; theta += BIN_WIDTH) {
-                    rho = round(j * cos(theta - 90) + i * sin(theta - 90)) + maxDistance;
-                    votes[rho][theta]++;
-                }
-            }
-        }
-    }
-
-    // find peaks
-    for(int i = 0; i < votes.size(); ++i) {
-        for(int j = 0; j < votes[i].size(); ++j) {
-            if(votes[i][j] >= lineThreshold) {
-                rho = i - maxDistance;
-                theta = j - 90;
-                std::cout << "found line with rho = " << rho << " and theta = " << theta << "\n";
-                // converts the line from the polar coordinates to Cartesian coordinates
-                cv::Point p1, p2;
-                polarToCartesian(rho, theta, p1, p2);
-                cv::line(output, p1, p2, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
-            }
-        }
-    }
-
-    cv::Point dummy1(10, 10), dummy2(100, 100);
-    cv::line(output, dummy1, dummy2, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
-    cv::imshow("source image", source);
-    cv::imshow("output image", output);
-    cv::imshow("edge detection result", edges);
-
-    cv::waitKey();
-}
-
-
 void computeHoughTransformMasterTask(int argc, char** argv, int numberOfProcesses) {
     int theta;      // angle for the line written in polar coordinates
     double rho;     // distance (radius) for the line written in polar coordinates
@@ -116,7 +99,6 @@ void computeHoughTransformMasterTask(int argc, char** argv, int numberOfProcesse
     cv::Mat source, edges, output;
 
     int lineThreshold = atoi(argv[2]);
-    std::deque<std::pair<int, int>> edgePoints;  // <row, col>
 
     source = cv::imread(argv[1], cv::IMREAD_GRAYSCALE);
     cv::namedWindow("source image", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
@@ -125,43 +107,58 @@ void computeHoughTransformMasterTask(int argc, char** argv, int numberOfProcesse
     cv::namedWindow("output image", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
 
     int maxDistance = hypot(source.rows, source.cols);
-    std::cout << maxDistance <<"\n";
 
     // voting matrix
-    std::vector<std::vector<int>> votes(2 * maxDistance, std::vector<int>(NUM_BINS, 0));
-    std::cout << votes.size() << ", " << votes[0].size() << "\n";
+	int votes[2 * maxDistance][NUM_BINS]; 
+	int receivedVotes[2 * maxDistance][NUM_BINS]; 
+	std::memset(votes, 0, sizeof votes);
+	std::memset(votes, 0, sizeof receivedVotes);
 
     // transforms the image such that only the edges are kept
     detectEdge(source, edges);
     cv::namedWindow("edge detection result", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
 
+	int edgeMatrixRowsPerProcess = (int)(edges.rows / (numberOfProcesses - 1));
+
     // vote
-    for(int i = 0; i < edges.rows; ++i) {
-        for(int j = 0; j < edges.cols; ++j) {
-            if(edges.at<uchar>(i, j) == 255) {  // if we find an edge point
-                // we go through all angles between -90 degrees and 90 degrees
-                for(theta = 0; theta <= 180; theta += BIN_WIDTH) {
-                    rho = round(j * cos(theta - 90) + i * sin(theta - 90)) + maxDistance;
-                    votes[rho][theta]++;
-                }
-            }
-        }
+	int processIndex = 0;
+    for (int i = 0; i < edges.rows; i += edgeMatrixRowsPerProcess) {
+		processIndex++;
+		int intervalStart = i, intervalEnd = i + edgeMatrixRowsPerProcess;
+		printf("Master sends intervalStart to %d...\n", processIndex);	
+		MPI_Send(&intervalStart, 1, MPI_INT, processIndex, MPI_EDGE_MATRIX_INTERVAL_START, MPI_COMM_WORLD);
+		printf("Master sends intervalEnd to %d...\n", processIndex);	
+		MPI_Send(&intervalEnd, 1, MPI_INT, processIndex, MPI_EDGE_MATRIX_INTERVAL_END, MPI_COMM_WORLD);		
+		printf("Master sends maxDistance to %d...\n", processIndex);	
+		MPI_Send(&maxDistance, 1, MPI_INT, processIndex, MPI_MAX_DISTANCE, MPI_COMM_WORLD);		
+		printf("Master sends matrix to %d...\n", processIndex);	
+		sendMatrixThroughMPI(edges, processIndex);
     }
 
-    // find peaks
-    for(int i = 0; i < votes.size(); ++i) {
-        for(int j = 0; j < votes[i].size(); ++j) {
-            if(votes[i][j] >= lineThreshold) {
+	for (processIndex = 1; processIndex < numberOfProcesses; processIndex++) {		
+		printf("Master receives votes from %d...\n", processIndex);	
+		MPI_Recv(receivedVotes, 2 * maxDistance * NUM_BINS, MPI_INT, processIndex, MPI_VOTE_MATRIX, MPI_COMM_WORLD, NULL);	
+		printf("Master received votes from %d...\n", processIndex);	
+		for (int row = 0; row < 2 * maxDistance; row++) {
+			for (int column = 0; column < NUM_BINS; column++)
+				votes[row][column] += receivedVotes[row][column];
+		}
+	}
+
+	// find peaks
+    for (int i = 0; i < 2 * maxDistance; ++i) {
+        for (int j = 0; j < NUM_BINS; ++j) {
+            if (votes[i][j] >= lineThreshold) {
                 rho = i - maxDistance;
                 theta = j - 90;
-                std::cout << "found line with rho = " << rho << " and theta = " << theta << "\n";
                 // converts the line from the polar coordinates to Cartesian coordinates
                 cv::Point p1, p2;
-                polarToCartesian(rho, theta, p1, p2);
+				polarToCartesian(rho, theta, p1, p2);
                 cv::line(output, p1, p2, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
             }
         }
     }
+
 
     cv::Point dummy1(10, 10), dummy2(100, 100);
     cv::line(output, dummy1, dummy2, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
@@ -173,12 +170,71 @@ void computeHoughTransformMasterTask(int argc, char** argv, int numberOfProcesse
 }
 
 
-int main(int argc, char** argv) {
-    if(argc < 3) {
-        printf("USAGE: hough [filename] [threshold]\n");
-        return 1;
+void computeHoughTransformWorkerTask(int rank, int numberOfProcesses, char* argv[]) {		
+	int intervalStart, intervalEnd, maxDistance;
+	MPI_Status status;
+	MPI_Recv(&intervalStart, 1, MPI_INT, 0, MPI_EDGE_MATRIX_INTERVAL_START, MPI_COMM_WORLD, &status);
+	printf("Worker receives intervalStart: %d\n", intervalStart);	
+	MPI_Recv(&intervalEnd, 1, MPI_INT, 0, MPI_EDGE_MATRIX_INTERVAL_END, MPI_COMM_WORLD, &status);		
+	printf("Worker receives intervalEnd...%d\n", intervalEnd);	
+	MPI_Recv(&maxDistance, 1, MPI_INT, 0, MPI_MAX_DISTANCE, MPI_COMM_WORLD, &status);	
+	printf("Worker receives maxDistance: %d\n", maxDistance);	
+	cv::Mat edges = receiveMatrixThroughMPI(0);
+	printf("Worker receives matrix\n");	
+
+    int lineThreshold = atoi(argv[2]);
+	int votes[2 * maxDistance][NUM_BINS]; 
+	std::memset(votes, 0, sizeof votes);
+
+	// vote
+    for (int i = intervalStart; i < intervalEnd; ++i) {
+        for (int j = 0; j < edges.cols; ++j) {
+            if (edges.at<uchar>(i, j) == 255) {  // if we find an edge point
+                // we go through all angles between -90 degrees and 90 degrees
+                for (int theta = 0; theta <= 180; theta += BIN_WIDTH) {
+                    int rho = (int)round(j * cos(theta - 90) + i * sin(theta - 90)) + maxDistance;
+                    votes[rho][theta]++;
+                }
+            }
+        }
     }
 
+	// send vote matrix back to the master, so that the master can update the cells of 
+	// the old matrix where the values are smaller than the ones in the sent matrix 	
+	printf("Worker sending vote matrix\n");	
+	MPI_Send(votes, 2 * maxDistance * NUM_BINS, MPI_INT, 0, MPI_VOTE_MATRIX, MPI_COMM_WORLD);
+	printf("Worker sent vote matrix\n");	
+
+	/**
+	// receive complete vote matrix from the master
+	MPI_Recv(&votes[0][0], 2 * maxDistance * NUM_BINS, MPI_INT, 0, MPI_VOTE_MATRIX, MPI_COMM_WORLD, NULL);
+	int peaksProcessWorkload = (int)((2 * maxDistance) / numberOfProcesses);
+	int peakIntervalStart = rank - 1, peakIntervalEnd = rank - 1 + peaksProcessWorkload; 
+
+    // find peaks
+    for (int i = peakIntervalStart; i < peakIntervalEnd; ++i) {
+        for (int j = 0; j < NUM_BINS; ++j) {
+            if (votes[i][j] >= lineThreshold) {
+                int rho = i - maxDistance;
+                int theta = j - 90;
+                // converts the line from the polar coordinates to Cartesian coordinates 
+                cv::Point p1, p2; 
+				polarToCartesian(rho, theta, p1, p2);
+                //cv::line(output, p1, p2, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
+				// send p1 and p2 back to the master
+            }
+        }
+    }		
+	**/
+}
+
+
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        printf("Usage: hough [filename] [threshold]\n");
+        return 1;
+    }
+	printf("\n");
     int rank, size;
 
     MPI_Init(&argc, &argv);
@@ -186,10 +242,12 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     if (!rank) {
-
-    } else {
-
+		computeHoughTransformMasterTask(argc, argv, size);	
+    } else {	
+		computeHoughTransformWorkerTask(rank, size, argv);	
     }
+
+	MPI_Finalize();
 
     return 0;
 }

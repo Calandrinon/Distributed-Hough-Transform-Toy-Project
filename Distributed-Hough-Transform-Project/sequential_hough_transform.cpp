@@ -57,7 +57,6 @@ int main(int argc, char** argv) {
     }
 
     int lineThreshold = atoi(argv[2]);
-    std::deque<std::pair<int, int>> edgePoints;  // <row, col>
 
     source = cv::imread(argv[1], cv::IMREAD_GRAYSCALE);
     cv::namedWindow("source image", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
@@ -69,8 +68,9 @@ int main(int argc, char** argv) {
     std::cout << maxDistance <<"\n";
 
     // voting matrix
-    std::vector<std::vector<int>> votes(2 * maxDistance, std::vector<int>(NUM_BINS, 0));
-    std::cout << votes.size() << ", " << votes[0].size() << "\n";
+	int votes[2 * maxDistance][NUM_BINS]; 
+	std::memset(votes, 0, sizeof votes);
+    std::cout << 2 * maxDistance  << ", " << NUM_BINS << "\n";
 
     // transforms the image such that only the edges are kept
     detectEdge(source, edges);
@@ -83,15 +83,15 @@ int main(int argc, char** argv) {
                 // we go through all angles between -90 degrees and 90 degrees
                 for(theta = 0; theta <= 180; theta += BIN_WIDTH) {
                     rho = round(j * cos(theta - 90) + i * sin(theta - 90)) + maxDistance;
-                    votes[rho][theta]++;
+                    votes[(int)rho][theta]++;
                 }
             }
         }
     }
 
     // find peaks
-    for(i = 0; i < votes.size(); ++i) {
-        for(j = 0; j < votes[i].size(); ++j) {
+    for(i = 0; i < 2 * maxDistance; ++i) {
+        for(j = 0; j < NUM_BINS; ++j) {
             if(votes[i][j] >= lineThreshold) {
                 rho = i - maxDistance;
                 theta = j - 90;
