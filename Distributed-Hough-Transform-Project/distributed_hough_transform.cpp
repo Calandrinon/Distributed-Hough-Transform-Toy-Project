@@ -38,8 +38,8 @@ void sendMatrixThroughMPI(cv::Mat m, int destination){
 	memcpy(&buffer[1 * sizeof(int)],(uchar*)&cols,sizeof(int));
 	memcpy(&buffer[2 * sizeof(int)],(uchar*)&type,sizeof(int));
 
-	int bytesPerSample=1; // change if using shorts or floats
-	int bytes=m.rows*m.cols*channels*bytesPerSample;
+	int bytesPerSample = 1; 
+	int bytes = m.rows*m.cols*channels*bytesPerSample;
 
 	if(!m.isContinuous())
  		m = m.clone();
@@ -177,12 +177,11 @@ void computeHoughTransformMasterTask(int argc, char** argv, int numberOfProcesse
 
 void computeHoughTransformWorkerTask(int rank, int numberOfProcesses, char* argv[]) {		
 	int intervalStart, intervalEnd, maxDistance;
-	MPI_Status status;
-	MPI_Recv(&intervalStart, 1, MPI_INT, 0, MPI_EDGE_MATRIX_INTERVAL_START, MPI_COMM_WORLD, &status);
+	MPI_Recv(&intervalStart, 1, MPI_INT, 0, MPI_EDGE_MATRIX_INTERVAL_START, MPI_COMM_WORLD, NULL);
 	printf("Worker receives intervalStart: %d\n", intervalStart);	
-	MPI_Recv(&intervalEnd, 1, MPI_INT, 0, MPI_EDGE_MATRIX_INTERVAL_END, MPI_COMM_WORLD, &status);		
+	MPI_Recv(&intervalEnd, 1, MPI_INT, 0, MPI_EDGE_MATRIX_INTERVAL_END, MPI_COMM_WORLD, NULL);		
 	printf("Worker receives intervalEnd...%d\n", intervalEnd);	
-	MPI_Recv(&maxDistance, 1, MPI_INT, 0, MPI_MAX_DISTANCE, MPI_COMM_WORLD, &status);	
+	MPI_Recv(&maxDistance, 1, MPI_INT, 0, MPI_MAX_DISTANCE, MPI_COMM_WORLD, NULL);	
 	printf("Worker receives maxDistance: %d\n", maxDistance);	
 	cv::Mat edges = receiveMatrixThroughMPI(0);
 	printf("Worker receives matrix\n");	
