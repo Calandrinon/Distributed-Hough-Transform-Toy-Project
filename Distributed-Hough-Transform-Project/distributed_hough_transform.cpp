@@ -121,12 +121,16 @@ void computeHoughTransformMasterTask(int argc, char** argv, int numberOfProcesse
     cv::namedWindow("edge detection result", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
 
 	int edgeMatrixRowsPerProcess = (int)(edges.rows / (numberOfProcesses - 1));
+	printf("edgeMatrixRowsPerProcess: %d\n", edgeMatrixRowsPerProcess);
+	int edgeMatrixRowsForTheLastProcess = edgeMatrixRowsPerProcess + (int)(edges.rows % (numberOfProcesses - 1));
 
     // vote
-	int processIndex = 0;
-    for (int i = 0; i < edges.rows; i += edgeMatrixRowsPerProcess) {
-		processIndex++;
-		int intervalStart = i, intervalEnd = i + edgeMatrixRowsPerProcess;
+    for (int processIndex = 1; processIndex < numberOfProcesses; processIndex++) {
+		int intervalStart = (processIndex - 1) * edgeMatrixRowsPerProcess, 
+			intervalEnd = intervalStart + edgeMatrixRowsPerProcess; 
+		if (processIndex == numberOfProcesses - 1)
+			intervalEnd = edges.rows;
+		printf("Process index %d: intervalStart=%d; intervalEnd=%d\n", processIndex, intervalStart, intervalEnd);
 		printf("Master sends intervalStart to %d...\n", processIndex);	
 		MPI_Send(&intervalStart, 1, MPI_INT, processIndex, MPI_EDGE_MATRIX_INTERVAL_START, MPI_COMM_WORLD);
 		printf("Master sends intervalEnd to %d...\n", processIndex);	
@@ -137,7 +141,7 @@ void computeHoughTransformMasterTask(int argc, char** argv, int numberOfProcesse
 		sendMatrixThroughMPI(edges, processIndex);
     }
 
-	for (processIndex = 1; processIndex < numberOfProcesses; processIndex++) {		
+	for (int processIndex = 1; processIndex < numberOfProcesses; processIndex++) {		
 		printf("Master receives votes from %d...\n", processIndex);	
 		MPI_Recv(receivedVotes, 2 * maxDistance * NUM_BINS, MPI_INT, processIndex, MPI_VOTE_MATRIX, MPI_COMM_WORLD, NULL);	
 		printf("Master received votes from %d...\n", processIndex);	

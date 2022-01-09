@@ -49,7 +49,7 @@ Only the voting part of the algorithm is distributed.
 
 
 \section{Results}
-At first glance, the distributed version seems to be faster than the sequential one.
+At first glance, the distributed version seems to be faster than the sequential one, for all of the tests executed on the 3 images in the images/ directory. 
 
 \begin{table}[ht]
 		\caption{Table with execution times (seconds)} 
@@ -57,7 +57,9 @@ At first glance, the distributed version seems to be faster than the sequential 
 \hline\hline                        
 		Image & Sequential & Parallel & Distributed &\\ [2ex]
 \hline\hline                               
-		sudoku\_pencil\_2.jpg & 0.592 & - & 0.369 \\       
+		sudoku\_pencil.jpg & 0.7793 & - & 0.6333 \\       
+		sudoku\_pencil\_2.jpg & 0.5930 & - & 0.3620 \\       
+		sudoku\_pencil\_3.jpg & 0.3251 & - & 0.2339\\       
 \hline\hline                        
 \end{tabular}
 \end{table}
