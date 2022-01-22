@@ -1,0 +1,28 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/calandrinon/Documents/Repos/Parallel-And-Distributed-Programming/Labs/Lab-1/BankAccounts/Model/Operation.h
+iostream
+-
+ctime
+-
+chrono
+-
+
+/home/calandrinon/Documents/Repos/Parallel-And-Distributed-Programming/Labs/Lab-1/BankAccounts/Model/OperationLog.cpp
+OperationLog.h
+/home/calandrinon/Documents/Repos/Parallel-And-Distributed-Programming/Labs/Lab-1/BankAccounts/Model/OperationLog.h
+
+/home/calandrinon/Documents/Repos/Parallel-And-Distributed-Programming/Labs/Lab-1/BankAccounts/Model/OperationLog.h
+vector
+-
+Operation.h
+/home/calandrinon/Documents/Repos/Parallel-And-Distributed-Programming/Labs/Lab-1/BankAccounts/Model/Operation.h
+mutex
+-
+
